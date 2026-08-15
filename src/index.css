@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Dark & Black";
+  src: url("/font/DarkAndBlack-valid.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range:
+    U+0020-0023,
+    U+0025-0026,
+    U+0028-002A,
+    U+002D,
+    U+002F,
+    U+003A-007E,
+    U+2010-205E;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow-x: hidden;
+  background: white;
+  color: #0f4c81;
+  font-family: "Dark & Black", serif;
+}
+
+.solemn-font,
+button,
+input,
+select,
+textarea {
+  font-family: "Dark & Black", serif;
+}
+
+a {
+  color: inherit;
+}
+
+.product-scrollbar {
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+
+.product-scrollbar::-webkit-scrollbar {
+  display: none;
+}
