@@ -204,18 +204,6 @@ const products = [
   },
 ];
 
-const bagImages = [
-  "/bags/bag_1.png",
-  "/bags/bag_2.png",
-  "/bags/bag_3.png",
-  "/bags/bag_4.png",
-  "/bags/bag_5.png",
-  "/bags/bag_6.png",
-  "/bags/bag_7.png",
-  "/bags/bag_8.png",
-  "/bags/bag_9.png",
-];
-
 const loopingProducts = Array.from(
   { length: 3 },
   (_, copyIndex) =>
@@ -256,28 +244,6 @@ function formatMoney(value) {
 }
 
 function CartButton({ itemCount }) {
-  const [bagIndex, setBagIndex] =
-    useState(0);
-
-  useEffect(() => {
-    bagImages.forEach((imagePath) => {
-      const image = new Image();
-      image.src = imagePath;
-    });
-
-    const interval = window.setInterval(() => {
-      setBagIndex(
-        (currentIndex) =>
-          (currentIndex + 1) %
-          bagImages.length,
-      );
-    }, 180);
-
-    return () => {
-      window.clearInterval(interval);
-    };
-  }, []);
-
   return (
     <NavLink
       to="/cart"
@@ -286,7 +252,7 @@ function CartButton({ itemCount }) {
     >
       <div className="relative">
         <img
-          src={bagImages[bagIndex]}
+          src="/cart.png"
           alt=""
           draggable="false"
           className="h-14 w-14 object-contain sm:h-24 sm:w-24"
@@ -326,11 +292,7 @@ function Navigation({
               !currentValue,
           );
         }}
-        className={`fixed left-4 z-[210] flex h-11 w-11 items-center justify-center bg-white text-[#0F4C81] outline-none transition-[top] duration-300 sm:hidden ${
-          isMenuOpen
-            ? "top-4"
-            : "top-4 border border-current p-1.5"
-        }`}
+        className="fixed left-3 top-3 z-[210] flex h-14 w-14 items-center justify-center bg-transparent text-[#0F4C81] outline-none sm:hidden"
       >
         {isMenuOpen ? (
           <span
@@ -341,21 +303,13 @@ function Navigation({
             <span className="absolute left-1/2 top-1/2 h-0.5 w-10 -translate-x-1/2 -translate-y-1/2 -rotate-45 bg-current" />
           </span>
         ) : (
-          <span
+          <img
+            src="/drawer.png"
+            alt=""
             aria-hidden="true"
-            className="flex h-full w-full flex-col justify-between"
-          >
-            {[0, 1, 2].map(
-              (drawer) => (
-                <span
-                  key={drawer}
-                  className="relative block h-1.5 w-full border border-current"
-                >
-                  <span className="absolute left-1/2 top-1/2 h-0.5 w-1.5 -translate-x-1/2 -translate-y-1/2 bg-current" />
-                </span>
-              ),
-            )}
-          </span>
+            draggable="false"
+            className="h-full w-full object-contain"
+          />
         )}
       </button>
 
