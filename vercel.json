@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    { "source": "/shop", "destination": "/index.html" },
+    { "source": "/products/:productSlug", "destination": "/index.html" },
+    { "source": "/wardrobe", "destination": "/index.html" },
+    { "source": "/collection", "destination": "/index.html" },
+    { "source": "/memories", "destination": "/index.html" },
+    { "source": "/about", "destination": "/index.html" },
+    { "source": "/cart", "destination": "/index.html" },
+    { "source": "/admin", "destination": "/index.html" }
+  ]
+}
