@@ -58,6 +58,18 @@ function productToDraft(product) {
   };
 }
 
+async function readJsonResponse(response) {
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (!contentType.includes("application/json")) {
+    throw new Error(
+      "The local admin API is not running. Restart npm run dev, then reload this page.",
+    );
+  }
+
+  return response.json();
+}
+
 function AdminDashboard() {
   const { getToken } = useAuth();
   const [products, setProducts] = useState([]);
@@ -99,8 +111,7 @@ function AdminDashboard() {
       const response = await fetch(
         "/api/products",
       );
-      const data =
-        await response.json();
+      const data = await readJsonResponse(response);
 
       if (!response.ok) {
         throw new Error(
@@ -120,7 +131,7 @@ function AdminDashboard() {
     async function initialize() {
       try {
         const response = await authenticatedFetch("/api/admin/me");
-        const data = await response.json();
+        const data = await readJsonResponse(response);
 
         if (!response.ok) {
           throw new Error(data.error || "Admin access could not be verified.");
@@ -242,7 +253,7 @@ function AdminDashboard() {
           method: "POST",
           body: formData,
         });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
 
         if (!response.ok) {
           throw new Error(data.error || `Could not upload ${file.name}.`);
@@ -300,7 +311,7 @@ function AdminDashboard() {
         },
         body: JSON.stringify(payload),
       });
-      const data = await response.json();
+      const data = await readJsonResponse(response);
 
       if (!response.ok) {
         throw new Error(data.error || "Unable to save this product.");

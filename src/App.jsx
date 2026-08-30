@@ -382,6 +382,16 @@ function Navigation({
           >
             About
           </NavLink>
+
+          <NavLink
+            to="/admin"
+            onClick={() => {
+              setIsMenuOpen(false);
+            }}
+            className={linkClasses}
+          >
+            Admin
+          </NavLink>
         </div>
       </nav>
     </>
