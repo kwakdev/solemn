@@ -1,16 +1,17 @@
 import {
-  Show,
-  SignIn,
-  UserButton,
-  useAuth,
-} from "@clerk/react";
-import {
   useCallback,
   useEffect,
   useMemo,
   useState,
 } from "react";
 import { NavLink } from "react-router-dom";
+import {
+  loadSupabaseProducts,
+  saveSupabaseProduct,
+  supabase,
+  uploadSupabaseProductImage,
+  verifyAdmin,
+} from "./lib/supabase";
 
 const emptyProduct = {
   id: "",
@@ -58,112 +59,35 @@ function productToDraft(product) {
   };
 }
 
-async function readJsonResponse(response) {
-  const contentType = response.headers.get("content-type") ?? "";
-
-  if (!contentType.includes("application/json")) {
-    throw new Error(
-      "The local admin API is not running. Restart npm run dev, then reload this page.",
-    );
-  }
-
-  return response.json();
+function errorMessage(error, fallback) {
+  return error instanceof Error ? error.message : fallback;
 }
 
-function AdminDashboard() {
-  const { getToken } = useAuth();
+function AdminDashboard({ user, onSignOut }) {
   const [products, setProducts] = useState([]);
   const [draft, setDraft] = useState(emptyProduct);
   const [descriptionText, setDescriptionText] = useState("");
-  const [adminState, setAdminState] = useState({
-    loading: true,
-    user: null,
-    error: "",
-  });
   const [status, setStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
-  const authenticatedFetch = useCallback(
-    async (url, options = {}) => {
-      const token = await getToken();
-      const headers = new Headers(
-        options.headers,
-      );
-
-      if (token) {
-        headers.set(
-          "authorization",
-          `Bearer ${token}`,
-        );
-      }
-
-      return fetch(url, {
-        ...options,
-        headers,
-      });
-    },
-    [getToken],
-  );
-
   const loadProducts = useCallback(
     async () => {
-      const response = await fetch(
-        "/api/products",
-      );
-      const data = await readJsonResponse(response);
-
-      if (!response.ok) {
-        throw new Error(
-          data.error ||
-            "Unable to load products.",
-        );
-      }
-
-      setProducts(data.products ?? []);
+      const nextProducts = await loadSupabaseProducts();
+      setProducts(nextProducts ?? []);
     },
     [],
   );
 
   useEffect(() => {
-    let cancelled = false;
+    const timeout = window.setTimeout(() => {
+      loadProducts().catch((error) => {
+        setStatus(errorMessage(error, "Unable to load products."));
+      });
+    }, 0);
 
-    async function initialize() {
-      try {
-        const response = await authenticatedFetch("/api/admin/me");
-        const data = await readJsonResponse(response);
-
-        if (!response.ok) {
-          throw new Error(data.error || "Admin access could not be verified.");
-        }
-
-        if (!cancelled) {
-          setAdminState({
-            loading: false,
-            user: data.user,
-            error: "",
-          });
-          await loadProducts();
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setAdminState({
-            loading: false,
-            user: null,
-            error:
-              error instanceof Error
-                ? error.message
-                : "Admin access could not be verified.",
-          });
-        }
-      }
-    }
-
-    initialize();
-    return () => {
-      cancelled = true;
-    };
-  }, [authenticatedFetch, loadProducts]);
+    return () => window.clearTimeout(timeout);
+  }, [loadProducts]);
 
   const totalStock = useMemo(
     () =>
@@ -247,19 +171,7 @@ function AdminDashboard() {
       const uploaded = [];
 
       for (const file of files) {
-        const formData = new FormData();
-        formData.append("file", file);
-        const response = await authenticatedFetch("/api/admin/upload", {
-          method: "POST",
-          body: formData,
-        });
-        const data = await readJsonResponse(response);
-
-        if (!response.ok) {
-          throw new Error(data.error || `Could not upload ${file.name}.`);
-        }
-
-        uploaded.push(data.url);
+        uploaded.push(await uploadSupabaseProductImage(file, user.id));
       }
 
       setDraft((current) => ({
@@ -301,24 +213,9 @@ function AdminDashboard() {
     };
 
     try {
-      const url = draft.id
-        ? `/api/admin/products/${encodeURIComponent(draft.id)}`
-        : "/api/admin/products";
-      const response = await authenticatedFetch(url, {
-        method: draft.id ? "PUT" : "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-      const data = await readJsonResponse(response);
-
-      if (!response.ok) {
-        throw new Error(data.error || "Unable to save this product.");
-      }
-
+      const savedProduct = await saveSupabaseProduct(payload);
       await loadProducts();
-      const savedDraft = productToDraft(data.product);
+      const savedDraft = productToDraft(savedProduct);
       setDraft(savedDraft);
       setDescriptionText(savedDraft.description.join("\n"));
       setStatus("Product saved and storefront updated.");
@@ -332,26 +229,6 @@ function AdminDashboard() {
     }
   }
 
-  if (adminState.loading) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center text-xl">
-        Verifying admin access…
-      </div>
-    );
-  }
-
-  if (adminState.error) {
-    return (
-      <div className="mx-auto flex min-h-[60vh] max-w-xl flex-col items-center justify-center px-6 text-center">
-        <h1 className="text-3xl">Admin access unavailable</h1>
-        <p className="mt-5 text-lg leading-8">{adminState.error}</p>
-        <p className="mt-3 text-sm opacity-60">
-          Sign in with the email address included in the site’s admin allowlist.
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="mx-auto max-w-7xl px-4 pb-24 pt-28 sm:px-8 sm:pt-36">
       <div className="flex flex-col gap-6 border-b border-[#0F4C81]/20 pb-8 sm:flex-row sm:items-end sm:justify-between">
@@ -361,7 +238,7 @@ function AdminDashboard() {
           </p>
           <h1 className="mt-2 text-4xl sm:text-5xl">Product Admin</h1>
           <p className="mt-3 text-sm opacity-60">
-            Signed in as {adminState.user.email}
+            Signed in as {user.email}
           </p>
         </div>
 
@@ -372,7 +249,13 @@ function AdminDashboard() {
           >
             View storefront
           </NavLink>
-          <UserButton />
+          <button
+            type="button"
+            onClick={onSignOut}
+            className="text-sm underline underline-offset-4"
+          >
+            Sign out
+          </button>
         </div>
       </div>
 
@@ -659,40 +542,223 @@ export function AdminSetupPage() {
         </p>
         <h1 className="mt-4 text-4xl">Admin setup required</h1>
         <p className="mt-6 text-lg leading-8">
-          Clerk is not configured for this version of the site yet. Add the
-          Clerk publishable key, secret key, and admin email to activate the
-          protected product manager.
+          Add the Supabase project URL and publishable key to Vercel, then run
+          the included Supabase setup script to activate the product manager.
+        </p>
+        <p className="mt-4 text-sm opacity-60">
+          Required variables: VITE_SUPABASE_URL and
+          VITE_SUPABASE_PUBLISHABLE_KEY
         </p>
       </div>
     </section>
   );
 }
 
+function AdminLogin({ onAuthenticated }) {
+  const [mode, setMode] = useState("sign-in");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [status, setStatus] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submit(event) {
+    event.preventDefault();
+    setSubmitting(true);
+    setStatus(mode === "sign-in" ? "Signing in…" : "Creating account…");
+
+    try {
+      const credentials = { email: email.trim(), password };
+      const result =
+        mode === "sign-in"
+          ? await supabase.auth.signInWithPassword(credentials)
+          : await supabase.auth.signUp({
+              ...credentials,
+              options: {
+                emailRedirectTo: `${window.location.origin}/admin`,
+              },
+            });
+
+      if (result.error) {
+        throw result.error;
+      }
+
+      if (result.data.session) {
+        setStatus("Signed in.");
+        await onAuthenticated(result.data.session);
+      } else {
+        setStatus("Check your email to confirm the account, then sign in.");
+      }
+    } catch (error) {
+      setStatus(errorMessage(error, "Unable to sign in."));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center px-5 py-28">
+      <form
+        onSubmit={submit}
+        className="w-full max-w-sm border border-[#0F4C81]/20 bg-white p-7 sm:p-10"
+      >
+        <p className="text-center text-3xl">solemn memory.</p>
+        <h1 className="mt-10 text-center text-2xl">
+          {mode === "sign-in" ? "Admin sign in" : "Create admin account"}
+        </h1>
+
+        <label className="mt-8 block">
+          <span className="mb-2 block text-sm">Email</span>
+          <input
+            required
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            className="w-full border border-[#0F4C81]/35 px-4 py-3 outline-none focus:border-[#0F4C81]"
+          />
+        </label>
+
+        <label className="mt-5 block">
+          <span className="mb-2 block text-sm">Password</span>
+          <input
+            required
+            type="password"
+            minLength="6"
+            autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            className="w-full border border-[#0F4C81]/35 px-4 py-3 outline-none focus:border-[#0F4C81]"
+          />
+        </label>
+
+        <button
+          type="submit"
+          disabled={submitting}
+          className="mt-7 w-full bg-[#0F4C81] px-6 py-4 text-white transition hover:opacity-80 disabled:cursor-wait disabled:opacity-50"
+        >
+          {submitting
+            ? "Please wait…"
+            : mode === "sign-in"
+              ? "Sign in"
+              : "Create account"}
+        </button>
+
+        {status && <p className="mt-5 text-center text-sm leading-6">{status}</p>}
+
+        <button
+          type="button"
+          onClick={() => {
+            setMode((current) =>
+              current === "sign-in" ? "sign-up" : "sign-in",
+            );
+            setStatus("");
+          }}
+          className="mt-6 w-full text-sm underline underline-offset-4"
+        >
+          {mode === "sign-in"
+            ? "Create the first admin account"
+            : "Already have an account? Sign in"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 export default function AdminPage() {
+  const [authState, setAuthState] = useState({
+    loading: true,
+    session: null,
+    user: null,
+    error: "",
+  });
+
+  const resolveSession = useCallback(async (session) => {
+    if (!session) {
+      setAuthState({ loading: false, session: null, user: null, error: "" });
+      return;
+    }
+
+    setAuthState((current) => ({ ...current, loading: true, session }));
+
+    try {
+      const user = await verifyAdmin();
+      setAuthState({ loading: false, session, user, error: "" });
+    } catch (error) {
+      setAuthState({
+        loading: false,
+        session,
+        user: null,
+        error: errorMessage(error, "Admin access could not be verified."),
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (active) {
+        resolveSession(data.session);
+      }
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (active) {
+          window.setTimeout(() => {
+            if (active) {
+              resolveSession(session);
+            }
+          }, 0);
+        }
+      },
+    );
+
+    return () => {
+      active = false;
+      listener.subscription.unsubscribe();
+    };
+  }, [resolveSession]);
+
+  async function signOut() {
+    await supabase.auth.signOut();
+    setAuthState({ loading: false, session: null, user: null, error: "" });
+  }
+
+  let content;
+
+  if (authState.loading) {
+    content = (
+      <div className="flex min-h-screen items-center justify-center text-xl">
+        Verifying admin access…
+      </div>
+    );
+  } else if (!authState.session) {
+    content = <AdminLogin onAuthenticated={resolveSession} />;
+  } else if (authState.error) {
+    content = (
+      <div className="mx-auto flex min-h-screen max-w-xl flex-col items-center justify-center px-6 text-center">
+        <h1 className="text-3xl">Admin access unavailable</h1>
+        <p className="mt-5 text-lg leading-8">{authState.error}</p>
+        <p className="mt-3 text-sm opacity-60">
+          Add this email to public.admin_users in Supabase, then reload.
+        </p>
+        <button
+          type="button"
+          onClick={signOut}
+          className="mt-7 border border-[#0F4C81] px-6 py-3"
+        >
+          Sign out
+        </button>
+      </div>
+    );
+  } else {
+    content = <AdminDashboard user={authState.user} onSignOut={signOut} />;
+  }
+
   return (
     <section className="min-h-screen bg-[#fdfdfc] text-[#0F4C81]">
-      <Show when="signed-out">
-        <div className="flex min-h-screen items-center justify-center px-5 py-28">
-          <div className="w-full max-w-md">
-            <p className="mb-8 text-center text-3xl">solemn memory.</p>
-            <SignIn
-              routing="hash"
-              fallbackRedirectUrl="/admin"
-              appearance={{
-                variables: {
-                  colorPrimary: "#0F4C81",
-                  colorText: "#0F4C81",
-                  borderRadius: "0px",
-                },
-              }}
-            />
-          </div>
-        </div>
-      </Show>
-
-      <Show when="signed-in">
-        <AdminDashboard />
-      </Show>
+      {content}
     </section>
   );
 }

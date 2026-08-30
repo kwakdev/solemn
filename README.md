@@ -1,16 +1,35 @@
-# React + Vite
+# Solemn Memory
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite storefront with a Supabase-powered product admin.
 
-Currently, two official plugins are available:
+## Supabase setup
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. Create a project at [Supabase](https://supabase.com/dashboard).
+2. Open **SQL Editor**, paste all of [`supabase/setup.sql`](supabase/setup.sql), and run it once. The script creates the product catalog, stock data, admin allowlist, image bucket, and Row Level Security policies.
+3. If needed, change the emails inserted into `public.admin_users` near the top of the SQL file. Only those accounts can edit the catalog.
+4. In **Project Settings > API**, copy the Project URL and the publishable key. The legacy `anon` key also works.
+5. Create `.env.local` for local development:
 
-## React Compiler
+   ```env
+   VITE_SUPABASE_URL=https://your-project.supabase.co
+   VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_your_key
+   ```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+6. Add the same two variables in **Vercel > Project > Settings > Environment Variables** for Production and Preview, then redeploy.
+7. Visit `/admin`, choose **Create the first admin account**, and use an email from `public.admin_users`. Confirm the email if Supabase asks, then sign in.
 
-## Expanding the ESLint configuration
+The publishable key is designed to be used in the browser. Never add a Supabase `service_role` or secret key to a `VITE_` variable.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Development
+
+```sh
+npm install
+npm run dev
+```
+
+## Checks
+
+```sh
+npm run lint
+npm run build
+```

@@ -15,6 +15,10 @@ import {
 import AdminPage, {
   AdminSetupPage,
 } from "./AdminPage";
+import {
+  isSupabaseConfigured,
+  loadSupabaseProducts,
+} from "./lib/supabase";
 
 const CART_STORAGE_KEY = "solemn-cart";
 
@@ -1756,9 +1760,7 @@ function AboutPage() {
   );
 }
 
-export default function App({
-  clerkEnabled = false,
-}) {
+export default function App() {
   const [cartItems, setCartItems] =
     useState(loadSavedCart);
   const [isMenuOpen, setIsMenuOpen] =
@@ -1783,24 +1785,20 @@ export default function App({
     let cancelled = false;
 
     async function loadProducts() {
+      if (!isSupabaseConfigured) {
+        return;
+      }
+
       try {
-        const response = await fetch(
-          "/api/products",
-        );
-
-        if (!response.ok) {
-          return;
-        }
-
-        const data =
-          await response.json();
+        const nextProducts =
+          await loadSupabaseProducts();
 
         if (
           !cancelled &&
-          Array.isArray(data.products)
+          Array.isArray(nextProducts)
         ) {
           setCatalogProducts(
-            data.products.map(
+            nextProducts.map(
               normalizeCatalogProduct,
             ),
           );
@@ -2016,7 +2014,7 @@ export default function App({
         <Route
           path="/admin"
           element={
-            clerkEnabled ? (
+            isSupabaseConfigured ? (
               <AdminPage />
             ) : (
               <AdminSetupPage />
