@@ -555,7 +555,6 @@ export function AdminSetupPage() {
 }
 
 function AdminLogin({ onAuthenticated }) {
-  const [mode, setMode] = useState("sign-in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("");
@@ -564,30 +563,18 @@ function AdminLogin({ onAuthenticated }) {
   async function submit(event) {
     event.preventDefault();
     setSubmitting(true);
-    setStatus(mode === "sign-in" ? "Signing in…" : "Creating account…");
+    setStatus("Signing in…");
 
     try {
       const credentials = { email: email.trim(), password };
-      const result =
-        mode === "sign-in"
-          ? await supabase.auth.signInWithPassword(credentials)
-          : await supabase.auth.signUp({
-              ...credentials,
-              options: {
-                emailRedirectTo: `${window.location.origin}/admin`,
-              },
-            });
+      const result = await supabase.auth.signInWithPassword(credentials);
 
       if (result.error) {
         throw result.error;
       }
 
-      if (result.data.session) {
-        setStatus("Signed in.");
-        await onAuthenticated(result.data.session);
-      } else {
-        setStatus("Check your email to confirm the account, then sign in.");
-      }
+      setStatus("Signed in.");
+      await onAuthenticated(result.data.session);
     } catch (error) {
       setStatus(errorMessage(error, "Unable to sign in."));
     } finally {
@@ -602,9 +589,7 @@ function AdminLogin({ onAuthenticated }) {
         className="w-full max-w-sm border border-[#0F4C81]/20 bg-white p-7 sm:p-10"
       >
         <p className="text-center text-3xl">solemn memory.</p>
-        <h1 className="mt-10 text-center text-2xl">
-          {mode === "sign-in" ? "Admin sign in" : "Create admin account"}
-        </h1>
+        <h1 className="mt-10 text-center text-2xl">Admin sign in</h1>
 
         <label className="mt-8 block">
           <span className="mb-2 block text-sm">Email</span>
@@ -624,7 +609,7 @@ function AdminLogin({ onAuthenticated }) {
             required
             type="password"
             minLength="6"
-            autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
+            autoComplete="current-password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             className="w-full border border-[#0F4C81]/35 px-4 py-3 outline-none focus:border-[#0F4C81]"
@@ -636,29 +621,10 @@ function AdminLogin({ onAuthenticated }) {
           disabled={submitting}
           className="mt-7 w-full bg-[#0F4C81] px-6 py-4 text-white transition hover:opacity-80 disabled:cursor-wait disabled:opacity-50"
         >
-          {submitting
-            ? "Please wait…"
-            : mode === "sign-in"
-              ? "Sign in"
-              : "Create account"}
+          {submitting ? "Please wait…" : "Sign in"}
         </button>
 
         {status && <p className="mt-5 text-center text-sm leading-6">{status}</p>}
-
-        <button
-          type="button"
-          onClick={() => {
-            setMode((current) =>
-              current === "sign-in" ? "sign-up" : "sign-in",
-            );
-            setStatus("");
-          }}
-          className="mt-6 w-full text-sm underline underline-offset-4"
-        >
-          {mode === "sign-in"
-            ? "Create the first admin account"
-            : "Already have an account? Sign in"}
-        </button>
       </form>
     </div>
   );

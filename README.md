@@ -16,7 +16,9 @@ React + Vite storefront with a Supabase-powered product admin.
    ```
 
 6. Add the same two variables in **Vercel > Project > Settings > Environment Variables** for Production and Preview, then redeploy.
-7. Visit `/admin`, choose **Create the first admin account**, and use an email from `public.admin_users`. Confirm the email if Supabase asks, then sign in.
+7. In **Authentication > Users**, create the admin user with an email from `public.admin_users`.
+8. In **Authentication > Providers > Email**, turn off **Allow new users to sign up**.
+9. Visit `/admin` and sign in with the existing admin account.
 
 The publishable key is designed to be used in the browser. Never add a Supabase `service_role` or secret key to a `VITE_` variable.
 
