@@ -1,19 +1,11 @@
 @import "tailwindcss";
 
 @font-face {
-  font-family: "Dark & Black";
-  src: url("/font/DarkAndBlack-valid.woff2") format("woff2");
+  font-family: "Smooth Papyrus";
+  src: url("/font/Smooth_Papyrus_Demo.ttf") format("truetype");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
-  unicode-range:
-    U+0020-0023,
-    U+0025-0026,
-    U+0028-002A,
-    U+002D,
-    U+002F,
-    U+003A-007E,
-    U+2010-205E;
 }
 
 html,
@@ -27,7 +19,7 @@ body {
   overflow-x: hidden;
   background: white;
   color: #0f4c81;
-  font-family: "Dark & Black", serif;
+  font-family: "Smooth Papyrus", "Segoe Print", cursive;
 }
 
 .solemn-font,
@@ -35,7 +27,7 @@ button,
 input,
 select,
 textarea {
-  font-family: "Dark & Black", serif;
+  font-family: "Smooth Papyrus", "Segoe Print", cursive;
 }
 
 a {
