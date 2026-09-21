@@ -18,7 +18,7 @@ export default function CartPage() {
               to="/shop"
               className="gloria-font mt-8 text-xl text-[#0F4C81] underline underline-offset-4"
             >
-              Continue Shopping
+              Continue Shoppping
             </NavLink>
           </div>
         </div>
