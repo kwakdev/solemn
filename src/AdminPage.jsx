@@ -557,6 +557,7 @@ export function AdminSetupPage() {
 function AdminLogin({ onAuthenticated }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [status, setStatus] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -605,15 +606,27 @@ function AdminLogin({ onAuthenticated }) {
 
         <label className="mt-5 block">
           <span className="mb-2 block text-sm">Password</span>
-          <input
-            required
-            type="password"
-            minLength="6"
-            autoComplete="current-password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            className="w-full border border-[#0F4C81]/35 px-4 py-3 outline-none focus:border-[#0F4C81]"
-          />
+          <span className="relative block">
+            <input
+              required
+              type={showPassword ? "text" : "password"}
+              minLength="6"
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className="w-full border border-[#0F4C81]/35 px-4 py-3 pr-20 outline-none focus:border-[#0F4C81]"
+              style={{ fontFamily: "Arial, sans-serif" }}
+            />
+            <button
+              type="button"
+              aria-pressed={showPassword}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              onClick={() => setShowPassword((current) => !current)}
+              className="absolute inset-y-0 right-0 px-4 text-xs underline underline-offset-4"
+            >
+              {showPassword ? "Hide" : "Show"}
+            </button>
+          </span>
         </label>
 
         <button
