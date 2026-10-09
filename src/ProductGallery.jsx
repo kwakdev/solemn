@@ -183,9 +183,23 @@ function PhotoViewer({ images, name, index, onChange, onClose }) {
     return () => {
       dialog.close();
       document.body.style.overflow = previousOverflow;
-      if (opener instanceof HTMLElement && opener.isConnected) opener.focus({ preventScroll: true });
+      if (opener instanceof HTMLElement && opener.isConnected) {
+        const activePhoto = opener.closest(".product-gallery")?.querySelector('.product-gallery-slide[aria-hidden="false"] button');
+        const returnTarget = opener.closest('[aria-hidden="true"]') ? activePhoto : opener;
+        returnTarget?.focus({ preventScroll: true });
+      }
     };
   }, []);
+
+  function changePhoto(next) {
+    const target = clamp(next, 0, images.length - 1);
+    if (target === index) return;
+    const dialog = dialogRef.current;
+    if (dialog.querySelector(".product-zoom-footer")?.contains(document.activeElement)) {
+      dialog.querySelector('[aria-label="Close photo viewer"]').focus();
+    }
+    onChange(target);
+  }
 
   return createPortal(
     <dialog
@@ -206,20 +220,20 @@ function PhotoViewer({ images, name, index, onChange, onClose }) {
             first?.focus();
           }
         }
-        if (event.key === "ArrowLeft") { event.preventDefault(); onChange(index - 1); }
-        if (event.key === "ArrowRight") { event.preventDefault(); onChange(index + 1); }
+        if (event.key === "ArrowLeft") { event.preventDefault(); changePhoto(index - 1); }
+        if (event.key === "ArrowRight") { event.preventDefault(); changePhoto(index + 1); }
       }}
     >
       <header className="product-viewer-header">
         <h2 id={titleId}>{name}</h2>
         <button type="button" className="product-photo-control" onClick={onClose} aria-label="Close photo viewer">Close</button>
       </header>
-      <ZoomPhoto key={images[index]} src={images[index]} name={`${name}, photo ${index + 1}`} onPrevious={() => onChange(index - 1)} onNext={() => onChange(index + 1)} />
+      <ZoomPhoto key={images[index]} src={images[index]} name={`${name}, photo ${index + 1}`} onPrevious={() => changePhoto(index - 1)} onNext={() => changePhoto(index + 1)} />
       {images.length > 1 && (
         <nav className="product-viewer-navigation" aria-label="Full-screen photos">
-          <button type="button" className="product-photo-control" disabled={index === 0} onClick={() => onChange(index - 1)} aria-label="Previous photo">←</button>
+          <button type="button" className="product-photo-control" disabled={index === 0} onClick={() => changePhoto(index - 1)} aria-label="Previous photo">←</button>
           <p aria-live="polite" aria-atomic="true">{index + 1} / {images.length}</p>
-          <button type="button" className="product-photo-control" disabled={index === images.length - 1} onClick={() => onChange(index + 1)} aria-label="Next photo">→</button>
+          <button type="button" className="product-photo-control" disabled={index === images.length - 1} onClick={() => changePhoto(index + 1)} aria-label="Next photo">→</button>
         </nav>
       )}
     </dialog>,
