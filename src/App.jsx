@@ -15,6 +15,7 @@ import {
 import AdminPage, {
   AdminSetupPage,
 } from "./AdminPage";
+import ProductGallery from "./ProductGallery";
 import {
   isSupabaseConfigured,
   loadSupabaseProducts,
@@ -1123,7 +1124,7 @@ function ShopPage({ products }) {
               to={`/products/${product.slug}`}
               className="group block text-[#0F4C81] no-underline"
             >
-              <div className="mx-auto flex aspect-[4/5] max-h-[620px] w-full items-center justify-center overflow-hidden bg-neutral-50">
+              <div className="mx-auto flex aspect-[4/5] max-h-[620px] w-full items-center justify-center overflow-hidden bg-white">
                 <img
                   src={product.image}
                   alt={product.name}
@@ -1195,11 +1196,6 @@ function ProductPageDetails({
 
   const [quantity, setQuantity] =
     useState(1);
-
-  const [
-    activeImage,
-    setActiveImage,
-  ] = useState(0);
 
   const [
     addedMessage,
@@ -1288,60 +1284,11 @@ function ProductPageDetails({
   return (
     <section className="min-h-screen bg-white px-4 pb-20 pt-36 sm:px-[5vw] sm:pb-24 sm:pt-40 lg:pl-[18vw] lg:pt-56">
       <div className="mx-auto grid max-w-[1440px] gap-12 lg:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)] lg:gap-16">
-        <div>
-          <div className="flex h-[50vh] min-h-[280px] items-center justify-center overflow-hidden bg-neutral-50 sm:h-[65vh] lg:h-[calc(100vh-16rem)] lg:min-h-[480px] lg:max-h-[720px]">
-            <img
-              src={
-                product.images[
-                  activeImage
-                ]
-              }
-              alt={`${product.name} view ${
-                activeImage + 1
-              }`}
-              draggable="false"
-              className="h-full w-full object-contain"
-            />
-          </div>
-
-          {product.images.length >
-            1 && (
-            <div className="mt-4 grid grid-cols-2 gap-4">
-              {product.images.map(
-                (
-                  imagePath,
-                  index,
-                ) => (
-                  <button
-                    key={`${imagePath}-${index}`}
-                    type="button"
-                    onClick={() => {
-                      setActiveImage(
-                        index,
-                      );
-                    }}
-                    aria-label={`Show product image ${
-                      index + 1
-                    }`}
-                    className={`flex aspect-square items-center justify-center overflow-hidden bg-neutral-50 transition-opacity ${
-                      activeImage ===
-                      index
-                        ? "opacity-100"
-                        : "opacity-40 hover:opacity-70"
-                    }`}
-                  >
-                    <img
-                      src={imagePath}
-                      alt=""
-                      draggable="false"
-                      className="h-full w-full object-contain"
-                    />
-                  </button>
-                ),
-              )}
-            </div>
-          )}
-        </div>
+        <ProductGallery
+          key={product.images.join("|")}
+          images={product.images}
+          name={product.name}
+        />
 
         <aside className="lg:sticky lg:top-56 lg:self-start">
           <NavLink
@@ -1571,7 +1518,7 @@ function CartPage({
             >
               <NavLink
                 to={`/products/${item.slug}`}
-                className="block max-w-[220px] bg-neutral-50 sm:max-w-none"
+                className="block max-w-[220px] bg-white sm:max-w-none"
               >
                 <img
                   src={item.image}
