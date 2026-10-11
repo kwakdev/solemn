@@ -22,6 +22,25 @@ React + Vite storefront with a Supabase-powered product admin.
 
 The publishable key is designed to be used in the browser. Never add a Supabase `service_role` or secret key to a `VITE_` variable.
 
+## Sale pricing for an existing catalog
+
+Before using this version with an existing Supabase project, run
+[`supabase/migrations/202610110001_add_sale_pricing.sql`](supabase/migrations/202610110001_add_sale_pricing.sql)
+in **SQL Editor**. It adds the optional sale price and validates pricing without
+reseeding products or changing existing prices, stock, images, or permissions.
+Fresh installations already include sale pricing in `setup.sql`.
+
+In **Admin**, enter the regular price, check **Put this product on sale**, enter a
+lower sale price, and save. Use **Remove sale** and save to restore the regular
+price. Both prices may be $0, but a sale price must be lower than the regular price.
+Ordinary product saves continue to work before the migration is applied; enabling
+a sale requires the migration.
+
+The product model keeps `priceCents` as the regular price and `salePriceCents` as
+the optional sale price (`null` when off sale). `price` and `priceValue` always
+represent the current selling price, including a sale, for storefront and cart
+totals. `regularPrice` and `regularPriceValue` expose the original price.
+
 ## Development
 
 ```sh

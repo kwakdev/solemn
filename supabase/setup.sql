@@ -20,6 +20,9 @@ create table if not exists public.products (
   slug text not null unique,
   name text not null,
   price_cents integer not null default 0 check (price_cents >= 0),
+  sale_price_cents integer constraint products_sale_price_valid
+    check (sale_price_cents is null or
+      (sale_price_cents >= 0 and sale_price_cents < price_cents)),
   placement text not null default 'new_arrivals'
     check (placement in ('new_arrivals', 'collection', 'memories')),
   description jsonb not null default '[]'::jsonb,

@@ -6,11 +6,13 @@ import {
 } from "react";
 import { NavLink } from "react-router-dom";
 import {
+  deleteSupabaseProduct,
   loadSupabaseProducts,
   saveSupabaseProduct,
   supabase,
   uploadSupabaseProductImage,
   verifyAdmin,
+  validateProductPricing,
 } from "./lib/supabase";
 
 const emptyProduct = {
@@ -18,6 +20,7 @@ const emptyProduct = {
   name: "",
   slug: "",
   priceCents: 0,
+  salePriceCents: null,
   placement: "new_arrivals",
   description: [],
   sizes: [
@@ -63,13 +66,25 @@ function errorMessage(error, fallback) {
   return error instanceof Error ? error.message : fallback;
 }
 
+function priceTextToCents(value) {
+  if (!/^\d+(\.\d{1,2})?$/.test(value.trim())) {
+    throw new Error("Enter prices in dollars with no more than two decimal places.");
+  }
+
+  return Math.round(Number(value) * 100);
+}
+
 function AdminDashboard({ user, onSignOut }) {
   const [products, setProducts] = useState([]);
   const [draft, setDraft] = useState(emptyProduct);
   const [descriptionText, setDescriptionText] = useState("");
+  const [priceText, setPriceText] = useState("");
+  const [salePriceText, setSalePriceText] = useState("");
+  const [saleEnabled, setSaleEnabled] = useState(false);
   const [status, setStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const loadProducts = useCallback(
     async () => {
@@ -106,6 +121,9 @@ function AdminDashboard({ user, onSignOut }) {
       description: [],
     });
     setDescriptionText("");
+    setPriceText("");
+    setSalePriceText("");
+    setSaleEnabled(false);
     setStatus("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -114,6 +132,13 @@ function AdminDashboard({ user, onSignOut }) {
     const nextDraft = productToDraft(product);
     setDraft(nextDraft);
     setDescriptionText(nextDraft.description.join("\n"));
+    setPriceText((nextDraft.priceCents / 100).toFixed(2));
+    setSalePriceText(
+      nextDraft.salePriceCents == null
+        ? ""
+        : (nextDraft.salePriceCents / 100).toFixed(2),
+    );
+    setSaleEnabled(nextDraft.salePriceCents != null);
     setStatus("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -160,7 +185,7 @@ function AdminDashboard({ user, onSignOut }) {
     const files = Array.from(event.target.files ?? []);
     event.target.value = "";
 
-    if (files.length === 0) {
+    if (files.length === 0 || isDeleting) {
       return;
     }
 
@@ -192,32 +217,50 @@ function AdminDashboard({ user, onSignOut }) {
 
   async function saveProduct(event) {
     event.preventDefault();
+    if (isSaving || isUploading || isDeleting) {
+      return;
+    }
+
     setIsSaving(true);
     setStatus("Saving product…");
 
-    const payload = {
-      ...draft,
-      name: draft.name.trim(),
-      slug: slugify(draft.slug || draft.name),
-      priceCents: Math.max(0, Math.round(Number(draft.priceCents) || 0)),
-      description: descriptionText
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean),
-      sizes: draft.sizes
-        .map((size) => ({
-          label: size.label.trim(),
-          stock: Math.max(0, Math.floor(Number(size.stock) || 0)),
-        }))
-        .filter((size) => size.label),
-    };
-
     try {
+      const priceCents = priceTextToCents(priceText);
+      const salePriceCents = saleEnabled
+        ? priceTextToCents(salePriceText)
+        : null;
+      validateProductPricing(priceCents, salePriceCents);
+
+      const payload = {
+        ...draft,
+        name: draft.name.trim(),
+        slug: slugify(draft.slug || draft.name),
+        priceCents,
+        salePriceCents,
+        description: descriptionText
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean),
+        sizes: draft.sizes
+          .map((size) => ({
+            label: size.label.trim(),
+            stock: Math.max(0, Math.floor(Number(size.stock) || 0)),
+          }))
+          .filter((size) => size.label),
+      };
+
       const savedProduct = await saveSupabaseProduct(payload);
       await loadProducts();
       const savedDraft = productToDraft(savedProduct);
       setDraft(savedDraft);
       setDescriptionText(savedDraft.description.join("\n"));
+      setPriceText((savedDraft.priceCents / 100).toFixed(2));
+      setSalePriceText(
+        savedDraft.salePriceCents == null
+          ? ""
+          : (savedDraft.salePriceCents / 100).toFixed(2),
+      );
+      setSaleEnabled(savedDraft.salePriceCents != null);
       setStatus("Product saved and storefront updated.");
       window.dispatchEvent(new Event("solemn-products-updated"));
     } catch (error) {
@@ -226,6 +269,41 @@ function AdminDashboard({ user, onSignOut }) {
       );
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function deleteProduct() {
+    if (!draft.id || isSaving || isUploading || isDeleting) {
+      return;
+    }
+
+    const productId = draft.id;
+    const productName =
+      products.find((product) => product.id === productId)?.name ?? draft.name;
+
+    if (
+      !window.confirm(
+        `Delete "${productName}"? This will permanently remove it from the catalog and storefront. This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+
+    setIsDeleting(true);
+    setStatus("Deleting product…");
+
+    try {
+      await deleteSupabaseProduct(productId);
+      setProducts((current) =>
+        current.filter((product) => product.id !== productId),
+      );
+      startNewProduct();
+      setStatus(`"${productName}" deleted.`);
+      window.dispatchEvent(new Event("solemn-products-updated"));
+    } catch (error) {
+      setStatus(errorMessage(error, "Unable to delete this product. Try again."));
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -252,6 +330,7 @@ function AdminDashboard({ user, onSignOut }) {
           <button
             type="button"
             onClick={onSignOut}
+            disabled={isDeleting}
             className="text-sm underline underline-offset-4"
           >
             Sign out
@@ -268,6 +347,7 @@ function AdminDashboard({ user, onSignOut }) {
             <button
               type="button"
               onClick={startNewProduct}
+              disabled={isSaving || isUploading || isDeleting}
               className="text-sm underline underline-offset-4"
             >
               New blank product
@@ -305,19 +385,15 @@ function AdminDashboard({ user, onSignOut }) {
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm">Price (USD)</span>
+              <span className="mb-2 block text-sm">Regular price (USD)</span>
               <input
                 required
                 type="number"
                 min="0"
+                max="21474836.47"
                 step="0.01"
-                value={(draft.priceCents / 100).toFixed(2)}
-                onChange={(event) =>
-                  updateDraft(
-                    "priceCents",
-                    Math.round(Number(event.target.value) * 100),
-                  )
-                }
+                value={priceText}
+                onChange={(event) => setPriceText(event.target.value)}
                 className="w-full border border-[#0F4C81]/35 bg-white px-4 py-3 outline-none focus:border-[#0F4C81]"
               />
             </label>
@@ -339,6 +415,58 @@ function AdminDashboard({ user, onSignOut }) {
               </select>
             </label>
           </div>
+
+          <fieldset className="border border-[#0F4C81]/20 p-5">
+            <legend className="px-2 text-xl">Sale pricing</legend>
+            <label className="flex items-center gap-3 text-sm">
+              <input
+                type="checkbox"
+                checked={saleEnabled}
+                onChange={(event) => setSaleEnabled(event.target.checked)}
+                className="h-4 w-4 accent-[#0F4C81]"
+              />
+              Put this product on sale
+            </label>
+            {saleEnabled && (
+              <div className="mt-5">
+                <label className="block">
+                  <span className="mb-2 block text-sm">Sale price (USD)</span>
+                  <input
+                    required
+                    type="number"
+                    min="0"
+                    max={
+                      Number(priceText) > 0
+                        ? (Number(priceText) - 0.01).toFixed(2)
+                        : undefined
+                    }
+                    step="0.01"
+                    value={salePriceText}
+                    onChange={(event) => setSalePriceText(event.target.value)}
+                    aria-describedby="sale-price-help"
+                    className="w-full border border-[#0F4C81]/35 bg-white px-4 py-3 outline-none focus:border-[#0F4C81]"
+                  />
+                </label>
+                <p id="sale-price-help" className="mt-2 text-sm opacity-60">
+                  Must be lower than the regular price. The storefront will show
+                  the original price crossed out beside the sale price.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSaleEnabled(false);
+                    setSalePriceText("");
+                  }}
+                  className="mt-4 text-sm underline underline-offset-4"
+                >
+                  Remove sale
+                </button>
+              </div>
+            )}
+            <p className="mt-3 text-xs opacity-60">
+              Save the product to apply pricing changes.
+            </p>
+          </fieldset>
 
           <label className="block">
             <span className="mb-2 block text-sm">
@@ -421,7 +549,7 @@ function AdminDashboard({ user, onSignOut }) {
                 type="file"
                 accept="image/*"
                 multiple
-                disabled={isUploading}
+                disabled={isUploading || isDeleting}
                 onChange={uploadPhotos}
                 className="sr-only"
               />
@@ -463,12 +591,24 @@ function AdminDashboard({ user, onSignOut }) {
           <div className="flex flex-wrap items-center gap-5">
             <button
               type="submit"
-              disabled={isSaving || isUploading}
+              disabled={isSaving || isUploading || isDeleting}
               className="bg-[#0F4C81] px-8 py-4 text-white transition hover:opacity-80 disabled:cursor-wait disabled:opacity-45"
             >
               {isSaving ? "Saving…" : "Save product"}
             </button>
-            {status && <p className="text-sm">{status}</p>}
+            {draft.id && (
+              <button
+                type="button"
+                onClick={deleteProduct}
+                disabled={isSaving || isUploading || isDeleting}
+                className="border border-red-700 px-6 py-4 text-red-700 transition hover:bg-red-50 disabled:cursor-wait disabled:opacity-45"
+              >
+                {isDeleting ? "Deleting…" : "Delete product"}
+              </button>
+            )}
+            <p role="status" className="w-full text-sm">
+              {status}
+            </p>
           </div>
         </form>
 
@@ -491,6 +631,7 @@ function AdminDashboard({ user, onSignOut }) {
                   key={product.id}
                   type="button"
                   onClick={() => editProduct(product)}
+                  disabled={isSaving || isUploading || isDeleting}
                   className={`grid w-full grid-cols-[72px_1fr] gap-4 border p-3 text-left transition ${
                     draft.id === product.id
                       ? "border-[#0F4C81] bg-[#0F4C81]/5"
@@ -508,6 +649,13 @@ function AdminDashboard({ user, onSignOut }) {
                   </div>
                   <div className="min-w-0">
                     <p className="truncate">{product.name}</p>
+                    <p className="mt-1 flex flex-wrap gap-2 text-sm">
+                      {product.salePriceCents != null && (
+                        <del className="opacity-50">{product.regularPrice}</del>
+                      )}
+                      <span>{product.price}</span>
+                      {product.salePriceCents != null && <span>On sale</span>}
+                    </p>
                     <p className="mt-1 text-xs opacity-55">
                       {placementLabels[product.placement]} · {product.stock} in
                       stock

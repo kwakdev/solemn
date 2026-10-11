@@ -50,7 +50,6 @@
 
 .product-gallery-toolbar { margin-top: 12px; }
 .product-gallery-counter { min-width: 52px; text-align: center; }
-.product-gallery-enlarge { margin-left: auto; }
 
 .product-photo-control,
 .product-zoom-controls button {
@@ -61,7 +60,7 @@
   border: 1px solid transparent;
   border-radius: 0;
   background: #fff;
-  font: 14px/1.4 Arial, sans-serif;
+  font: 14px/1.4 "Smooth Papyrus", "Segoe Print", cursive;
   cursor: pointer;
   touch-action: manipulation;
 }
@@ -75,14 +74,10 @@
 .product-zoom-controls button:focus-visible { outline: 2px solid #0f4c81; outline-offset: 2px; }
 
 .product-gallery-counter,
-.product-gallery-hint,
-.product-viewer-navigation p,
-.product-zoom-footer p {
-  font: 12px/1.6 Arial, sans-serif;
+.product-viewer-navigation p {
+  font: 12px/1.6 "Smooth Papyrus", "Segoe Print", cursive;
   color: #0f4c81;
 }
-
-.product-gallery-hint { margin-top: 4px; text-align: center; }
 
 dialog.product-photo-viewer {
   position: fixed;
@@ -116,7 +111,6 @@ dialog.product-photo-viewer {
 .product-zoom-stage img { pointer-events: none; transform-origin: center; }
 .product-zoom-footer { text-align: center; }
 .product-zoom-controls button { border-color: #0f4c8133; }
-.product-zoom-footer p { margin-top: 8px; }
 
 @media (min-width: 1024px) {
   .product-gallery-photo { height: clamp(380px, calc(100svh - 16rem), 720px); }

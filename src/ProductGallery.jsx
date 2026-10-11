@@ -164,7 +164,6 @@ function ZoomPhoto({ src, name, onPrevious, onNext }) {
           <button type="button" aria-label="Reset zoom" onClick={() => zoomTo(1)}>{Math.round(view.scale * 100)}%</button>
           <button type="button" aria-label="Zoom in" disabled={view.scale >= 4} onClick={() => zoomTo(view.scale + 0.5)}>+</button>
         </div>
-        <p>Pinch or double-tap to zoom · Drag to explore</p>
       </div>
     </>
   );
@@ -323,9 +322,7 @@ export default function ProductGallery({ images, name }) {
         {images.length > 1 && <button type="button" className="product-photo-control" onClick={() => goTo(index - 1)} disabled={index === 0} aria-label="Previous photo">←</button>}
         <p className="product-gallery-counter" aria-live="polite" aria-atomic="true">{index + 1} / {images.length}</p>
         {images.length > 1 && <button type="button" className="product-photo-control" onClick={() => goTo(index + 1)} disabled={index === images.length - 1} aria-label="Next photo">→</button>}
-        <button type="button" className="product-photo-control product-gallery-enlarge" aria-haspopup="dialog" onClick={() => setViewerOpen(true)}>Zoom</button>
       </div>
-      <p className="product-gallery-hint">{images.length > 1 ? "Swipe for more photos · Tap to zoom" : "Tap photo to zoom"}</p>
       {viewerOpen && <PhotoViewer images={images} name={name} index={index} onChange={(next) => goTo(next, false)} onClose={() => setViewerOpen(false)} />}
     </section>
   );

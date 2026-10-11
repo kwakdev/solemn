@@ -16,6 +16,7 @@ import AdminPage, {
   AdminSetupPage,
 } from "./AdminPage";
 import ProductGallery from "./ProductGallery";
+import { ContactPage, PoliciesPage, ShippingInformation } from "./StoreInformation";
 import {
   isSupabaseConfigured,
   loadSupabaseProducts,
@@ -248,6 +249,24 @@ function formatMoney(value) {
   }).format(value);
 }
 
+function ProductPrice({ product, className = "" }) {
+  const onSale = product.salePriceCents != null;
+
+  return (
+    <p className={`flex flex-wrap items-baseline gap-x-3 gap-y-1 ${className}`}>
+      {onSale && <span className="sr-only">Sale price</span>}
+      <span className={onSale ? "text-red-700" : undefined}>{product.price}</span>
+      {onSale && (
+        <>
+          <span className="sr-only">Regular price</span>
+          <del className="text-[#0F4C81]/60">{product.regularPrice}</del>
+          <span className="w-full text-xs uppercase tracking-[0.15em]">On sale</span>
+        </>
+      )}
+    </p>
+  );
+}
+
 function CartButton({ itemCount }) {
   return (
     <NavLink
@@ -313,7 +332,7 @@ function Navigation({
             alt=""
             aria-hidden="true"
             draggable="false"
-            className="h-full w-full object-contain"
+            className="h-full w-full scale-[1.4] object-contain"
           />
         )}
       </button>
@@ -324,7 +343,7 @@ function Navigation({
         className={`fixed inset-0 z-[200] flex min-h-[100dvh] flex-col items-center justify-center bg-white/65 px-6 py-24 backdrop-blur-sm transition-opacity duration-500 ease-out sm:inset-auto sm:left-[5vw] sm:top-[6vh] sm:min-h-0 sm:items-start sm:justify-start sm:gap-6 sm:bg-transparent sm:p-0 sm:opacity-100 sm:backdrop-blur-none sm:transition-none ${
           isMenuOpen
             ? "opacity-100"
-            : "pointer-events-none opacity-0 sm:pointer-events-auto"
+            : "invisible pointer-events-none opacity-0 sm:visible sm:pointer-events-auto"
         }`}
       >
         <NavLink
@@ -359,23 +378,31 @@ function Navigation({
           </NavLink>
 
           <NavLink
-            to="/collection"
+            to="/shop-all"
             onClick={() => {
               setIsMenuOpen(false);
             }}
             className={linkClasses}
           >
-            Collection
+            Shop All
           </NavLink>
 
           <NavLink
-            to="/memories"
+            to="/policies"
             onClick={() => {
               setIsMenuOpen(false);
             }}
             className={linkClasses}
           >
-            Memories
+            Policies
+          </NavLink>
+
+          <NavLink
+            to="/contact"
+            onClick={() => setIsMenuOpen(false)}
+            className={linkClasses}
+          >
+            Contact
           </NavLink>
 
           <NavLink
@@ -1137,9 +1164,7 @@ function ShopPage({ products }) {
                   {product.name}
                 </h2>
 
-                <p className="mt-1 text-base">
-                  {product.price}
-                </p>
+                <ProductPrice product={product} className="mt-1 justify-center text-base" />
 
                 {product.stock > 0 &&
                   product.stock <= 3 && (
@@ -1302,9 +1327,7 @@ function ProductPageDetails({
             {product.name}
           </h1>
 
-          <p className="mt-3 text-xl">
-            {product.price}
-          </p>
+          <ProductPrice product={product} className="mt-3 text-xl" />
 
           <div className="mt-10">
             <p className="mb-4 text-lg">
@@ -1433,20 +1456,27 @@ function ProductPageDetails({
             </div>
           )}
 
-          <div className="mt-12 border-t border-black pt-8">
-            <h2 className="text-xl">
-              Product details
-            </h2>
-
-            <div className="mt-6 space-y-4 text-sm leading-7 sm:text-base">
-              {product.description.map(
-                (detail) => (
-                  <p key={detail}>
-                    — {detail}
-                  </p>
-                ),
-              )}
-            </div>
+          <div className="mt-12 border-t border-[#0F4C81]/40">
+            <details className="product-information border-b border-[#0F4C81]/40">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-5 text-lg">
+                Product Description
+                <span className="product-information-toggle" aria-hidden="true" />
+              </summary>
+              <div className="space-y-4 pb-6 text-sm leading-7 sm:text-base">
+                {product.description.map((detail, index) => (
+                  <p key={`${index}-${detail}`}>{detail}</p>
+                ))}
+              </div>
+            </details>
+            <details className="product-information border-b border-[#0F4C81]/40">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-5 text-lg">
+                Shipping
+                <span className="product-information-toggle" aria-hidden="true" />
+              </summary>
+              <div className="pb-6 text-sm leading-7 sm:text-base">
+                <ShippingInformation />
+              </div>
+            </details>
           </div>
         </aside>
       </div>
@@ -1631,27 +1661,33 @@ function CartPage({
 function HomePage({ isMenuOpen }) {
   return (
     <section className="flex min-h-screen items-center justify-center bg-white pt-20 sm:px-[6vw] sm:pb-8 sm:pt-36">
-      <video
-        autoPlay
-        muted
-        loop
-        playsInline
-        preload="metadata"
-        aria-label="Solemn Memory featured video"
-        className={`h-[calc(100dvh-5rem)] w-full origin-center object-contain transition-[transform,filter,opacity] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform motion-reduce:transform-none motion-reduce:transition-none sm:h-[calc(100vh-11rem)] ${
-          isMenuOpen
-            ? "scale-[0.82] blur-[1px] opacity-55"
-            : "scale-100 blur-0 opacity-100"
-        }`}
+      <NavLink
+        to="/shop"
+        aria-label="Explore New Arrivals"
+        className="block w-full focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#0F4C81]"
       >
-        <source
-          src="/videos/main-page.mp4"
-          type="video/mp4"
-        />
+        <video
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          aria-label="Solemn Memory featured video"
+          className={`h-[calc(100dvh-5rem)] w-full origin-center object-contain transition-[transform,filter,opacity] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform motion-reduce:transform-none motion-reduce:transition-none sm:h-[calc(100vh-11rem)] ${
+            isMenuOpen
+              ? "scale-[0.82] blur-[1px] opacity-55"
+              : "scale-100 blur-0 opacity-100"
+          }`}
+        >
+          <source
+            src="/videos/main-page.mp4"
+            type="video/mp4"
+          />
 
-        Your browser does not support the
-        video element.
-      </video>
+          Your browser does not support the
+          video element.
+        </video>
+      </NavLink>
     </section>
   );
 }
@@ -1749,6 +1785,15 @@ export default function App() {
               normalizeCatalogProduct,
             ),
           );
+          const productsById = new Map(nextProducts.map((product) => [product.id, product]));
+          setCartItems((currentItems) =>
+            currentItems
+              .filter((item) => productsById.has(item.productId))
+              .map((item) => ({
+                ...item,
+                priceValue: productsById.get(item.productId).priceValue,
+              })),
+          );
         }
       } catch {
         // The static catalog remains available
@@ -1800,6 +1845,7 @@ export default function App() {
             item.cartKey === cartKey
               ? {
                   ...item,
+                  priceValue: product.priceValue,
                   quantity:
                     item.quantity +
                     quantity,
@@ -1895,6 +1941,14 @@ export default function App() {
             />
           }
         />
+
+        <Route
+          path="/shop-all"
+          element={<ShopPage products={catalogProducts} />}
+        />
+
+        <Route path="/policies" element={<PoliciesPage />} />
+        <Route path="/contact" element={<ContactPage />} />
 
         <Route
           path="/products/:productSlug"

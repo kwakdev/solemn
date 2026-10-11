@@ -42,3 +42,16 @@ a {
 .product-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+.product-information summary::-webkit-details-marker {
+  display: none;
+}
+
+.product-information-toggle::before {
+  content: "+";
+  font-size: 1.5rem;
+}
+
+.product-information[open] .product-information-toggle::before {
+  content: "−";
+}
