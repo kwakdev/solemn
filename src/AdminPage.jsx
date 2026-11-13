@@ -5,15 +5,16 @@ import {
   useState,
 } from "react";
 import { NavLink } from "react-router-dom";
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut as signOutFirebase } from "firebase/auth";
 import {
-  deleteSupabaseProduct,
-  loadSupabaseProducts,
-  saveSupabaseProduct,
-  supabase,
-  uploadSupabaseProductImage,
+  deleteFirebaseProduct,
+  loadFirebaseProducts,
+  saveFirebaseProduct,
+  auth,
+  uploadFirebaseProductImage,
   verifyAdmin,
   validateProductPricing,
-} from "./lib/supabase";
+} from "./lib/firebase";
 
 const emptyProduct = {
   id: "",
@@ -24,10 +25,10 @@ const emptyProduct = {
   placement: "new_arrivals",
   description: [],
   sizes: [
-    { label: "1", stock: 0 },
-    { label: "2", stock: 0 },
-    { label: "3", stock: 0 },
-    { label: "4", stock: 0 },
+    { label: "1", stock: 0, shopifyVariantId: "" },
+    { label: "2", stock: 0, shopifyVariantId: "" },
+    { label: "3", stock: 0, shopifyVariantId: "" },
+    { label: "4", stock: 0, shopifyVariantId: "" },
   ],
   images: [],
 };
@@ -57,6 +58,7 @@ function productToDraft(product) {
     sizes: (product.sizes ?? []).map((size) => ({
       label: size.label,
       stock: Number(size.stock ?? (size.available ? 1 : 0)),
+      shopifyVariantId: size.shopifyVariantId ?? "",
     })),
     images: [...(product.images ?? [])],
   };
@@ -88,7 +90,7 @@ function AdminDashboard({ user, onSignOut }) {
 
   const loadProducts = useCallback(
     async () => {
-      const nextProducts = await loadSupabaseProducts();
+      const nextProducts = await loadFirebaseProducts();
       setProducts(nextProducts ?? []);
     },
     [],
@@ -170,7 +172,7 @@ function AdminDashboard({ user, onSignOut }) {
   function addSize() {
     setDraft((current) => ({
       ...current,
-      sizes: [...current.sizes, { label: "", stock: 0 }],
+      sizes: [...current.sizes, { label: "", stock: 0, shopifyVariantId: "" }],
     }));
   }
 
@@ -196,7 +198,7 @@ function AdminDashboard({ user, onSignOut }) {
       const uploaded = [];
 
       for (const file of files) {
-        uploaded.push(await uploadSupabaseProductImage(file, user.id));
+        uploaded.push(await uploadFirebaseProductImage(file, user.id));
       }
 
       setDraft((current) => ({
@@ -245,11 +247,12 @@ function AdminDashboard({ user, onSignOut }) {
           .map((size) => ({
             label: size.label.trim(),
             stock: Math.max(0, Math.floor(Number(size.stock) || 0)),
+            shopifyVariantId: size.shopifyVariantId.trim(),
           }))
           .filter((size) => size.label),
       };
 
-      const savedProduct = await saveSupabaseProduct(payload);
+      const savedProduct = await saveFirebaseProduct(payload);
       await loadProducts();
       const savedDraft = productToDraft(savedProduct);
       setDraft(savedDraft);
@@ -293,7 +296,7 @@ function AdminDashboard({ user, onSignOut }) {
     setStatus("Deleting product…");
 
     try {
-      await deleteSupabaseProduct(productId);
+      await deleteFirebaseProduct(productId);
       setProducts((current) =>
         current.filter((product) => product.id !== productId),
       );
@@ -483,7 +486,7 @@ function AdminDashboard({ user, onSignOut }) {
           <fieldset>
             <div className="flex items-end justify-between gap-4">
               <div>
-                <legend className="text-xl">Stock by size</legend>
+                <legend className="text-xl">Sizes, stock & checkout</legend>
                 <p className="mt-1 text-sm opacity-55">
                   Total stock: {totalStock}
                 </p>
@@ -497,11 +500,22 @@ function AdminDashboard({ user, onSignOut }) {
               </button>
             </div>
 
+            <p id="shopify-variant-help" className="mt-3 text-sm leading-6 opacity-65">
+              Enter the Shopify variant ID for each size to connect checkout.
+              Use the numeric ID from that variant's Shopify admin URL, not the
+              parent product ID. You can save without IDs and add them later;
+              checkout stays unavailable for sizes without an ID.
+            </p>
+            <p className="mt-2 text-sm leading-6 opacity-65">
+              Keep prices and inventory in sync with Shopify. Shopify determines
+              the final checkout price and availability.
+            </p>
+
             <div className="mt-4 space-y-3">
               {draft.sizes.map((size, index) => (
                 <div
-                  key={`${index}-${size.label}`}
-                  className="grid grid-cols-[1fr_1fr_auto] gap-3"
+                  key={index}
+                  className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-3 border border-[#0F4C81]/15 p-3"
                 >
                   <input
                     aria-label={`Size ${index + 1}`}
@@ -531,6 +545,23 @@ function AdminDashboard({ user, onSignOut }) {
                   >
                     ×
                   </button>
+                  <label className="col-span-3 block">
+                    <span className="mb-2 block text-sm">
+                      Shopify variant ID for size {size.label || index + 1}
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[1-9][0-9]*"
+                      placeholder="e.g. 46029714522309"
+                      value={size.shopifyVariantId}
+                      onChange={(event) =>
+                        updateSize(index, "shopifyVariantId", event.target.value.trim())
+                      }
+                      aria-describedby="shopify-variant-help"
+                      className="w-full min-w-0 border border-[#0F4C81]/35 px-4 py-3 outline-none focus:border-[#0F4C81]"
+                    />
+                  </label>
                 </div>
               ))}
             </div>
@@ -690,19 +721,21 @@ export function AdminSetupPage() {
         </p>
         <h1 className="mt-4 text-4xl">Admin setup required</h1>
         <p className="mt-6 text-lg leading-8">
-          Add the Supabase project URL and publishable key to Vercel, then run
-          the included Supabase setup script to activate the product manager.
+          Add your Firebase web app configuration to your hosting environment,
+          then finish the Firebase setup in the project README to activate the
+          product manager.
         </p>
         <p className="mt-4 text-sm opacity-60">
-          Required variables: VITE_SUPABASE_URL and
-          VITE_SUPABASE_PUBLISHABLE_KEY
+          Set VITE_FIREBASE_API_KEY, VITE_FIREBASE_AUTH_DOMAIN,
+          VITE_FIREBASE_PROJECT_ID, VITE_FIREBASE_STORAGE_BUCKET, and
+          VITE_FIREBASE_APP_ID, then rebuild the site.
         </p>
       </div>
     </section>
   );
 }
 
-function AdminLogin({ onAuthenticated }) {
+function AdminLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -715,15 +748,8 @@ function AdminLogin({ onAuthenticated }) {
     setStatus("Signing in…");
 
     try {
-      const credentials = { email: email.trim(), password };
-      const result = await supabase.auth.signInWithPassword(credentials);
-
-      if (result.error) {
-        throw result.error;
-      }
-
+      await signInWithEmailAndPassword(auth, email.trim(), password);
       setStatus("Signed in.");
-      await onAuthenticated(result.data.session);
     } catch (error) {
       setStatus(errorMessage(error, "Unable to sign in."));
     } finally {
@@ -799,57 +825,52 @@ export default function AdminPage() {
     error: "",
   });
 
-  const resolveSession = useCallback(async (session) => {
-    if (!session) {
-      setAuthState({ loading: false, session: null, user: null, error: "" });
-      return;
-    }
-
-    setAuthState((current) => ({ ...current, loading: true, session }));
-
-    try {
-      const user = await verifyAdmin();
-      setAuthState({ loading: false, session, user, error: "" });
-    } catch (error) {
-      setAuthState({
-        loading: false,
-        session,
-        user: null,
-        error: errorMessage(error, "Admin access could not be verified."),
-      });
-    }
-  }, []);
-
   useEffect(() => {
     let active = true;
+    let generation = 0;
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (active) {
-        resolveSession(data.session);
+    const unsubscribe = onAuthStateChanged(auth, async (session) => {
+      const currentGeneration = ++generation;
+      if (!active) return;
+      if (!session) {
+        setAuthState({ loading: false, session: null, user: null, error: "" });
+        return;
+      }
+
+      setAuthState({ loading: true, session, user: null, error: "" });
+      try {
+        const user = await verifyAdmin(session);
+        if (active && generation === currentGeneration) {
+          setAuthState({ loading: false, session, user, error: "" });
+        }
+      } catch (error) {
+        if (active && generation === currentGeneration) {
+          setAuthState({
+            loading: false,
+            session,
+            user: null,
+            error: errorMessage(error, "Admin access could not be verified."),
+          });
+        }
       }
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        if (active) {
-          window.setTimeout(() => {
-            if (active) {
-              resolveSession(session);
-            }
-          }, 0);
-        }
-      },
-    );
-
     return () => {
       active = false;
-      listener.subscription.unsubscribe();
+      generation += 1;
+      unsubscribe();
     };
-  }, [resolveSession]);
+  }, []);
 
   async function signOut() {
-    await supabase.auth.signOut();
-    setAuthState({ loading: false, session: null, user: null, error: "" });
+    try {
+      await signOutFirebase(auth);
+    } catch (error) {
+      setAuthState((current) => ({
+        ...current,
+        error: errorMessage(error, "Unable to sign out. Try again."),
+      }));
+    }
   }
 
   let content;
@@ -861,14 +882,15 @@ export default function AdminPage() {
       </div>
     );
   } else if (!authState.session) {
-    content = <AdminLogin onAuthenticated={resolveSession} />;
+    content = <AdminLogin />;
   } else if (authState.error) {
     content = (
       <div className="mx-auto flex min-h-screen max-w-xl flex-col items-center justify-center px-6 text-center">
         <h1 className="text-3xl">Admin access unavailable</h1>
         <p className="mt-5 text-lg leading-8">{authState.error}</p>
         <p className="mt-3 text-sm opacity-60">
-          Add this email to public.admin_users in Supabase, then reload.
+          Ask the store owner to grant this Firebase account admin access, then
+          sign out and sign in again.
         </p>
         <button
           type="button"

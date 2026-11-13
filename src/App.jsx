@@ -18,11 +18,19 @@ import AdminPage, {
 import ProductGallery from "./ProductGallery";
 import { ContactPage, PoliciesPage, ShippingInformation } from "./StoreInformation";
 import {
-  isSupabaseConfigured,
-  loadSupabaseProducts,
-} from "./lib/supabase";
+  isFirebaseConfigured,
+  loadFirebaseProducts,
+} from "./lib/firebase";
+import {
+  buildShopifyCheckoutUrl,
+  cartItemKey,
+  isShopifyVariantId,
+  normalizeSavedCart,
+  resolveCart,
+} from "./lib/checkout";
 
 const CART_STORAGE_KEY = "solemn-cart";
+const SHOPIFY_STORE_URL = import.meta.env.VITE_SHOPIFY_STORE_URL;
 
 function normalizeCatalogProduct(product) {
   const sizes = (product.sizes ?? []).map((size) => ({
@@ -229,16 +237,18 @@ function loadSavedCart() {
       );
 
     if (!savedCart) {
-      return [];
+      return { items: [], notice: "" };
     }
 
     const parsedCart = JSON.parse(savedCart);
 
-    return Array.isArray(parsedCart)
-      ? parsedCart
-      : [];
+    if (!Array.isArray(parsedCart)) throw new Error("Invalid saved cart");
+    return { items: normalizeSavedCart(parsedCart), notice: "" };
   } catch {
-    return [];
+    return {
+      items: [],
+      notice: "Your saved cart could not be restored. Please add your items again.",
+    };
   }
 }
 
@@ -1256,11 +1266,6 @@ function ProductPageDetails({
       (size) => size.available,
     );
 
-  const cannotPurchase =
-    product.soldOut ||
-    availableSizes.length === 0 ||
-    selectedSize === "";
-
   const selectedSizeDetails =
     product.sizes.find(
       (size) =>
@@ -1269,6 +1274,16 @@ function ProductPageDetails({
 
   const selectedStock =
     selectedSizeDetails?.stock ?? 0;
+
+  const checkoutUnavailable = selectedSize !== "" &&
+    !isShopifyVariantId(selectedSizeDetails?.shopifyVariantId);
+  const cannotPurchase =
+    product.soldOut ||
+    availableSizes.length === 0 ||
+    selectedStock === 0 ||
+    checkoutUnavailable ||
+    quantity > selectedStock ||
+    selectedSize === "";
 
   function decreaseQuantity() {
     setQuantity(
@@ -1295,11 +1310,16 @@ function ProductPageDetails({
       return;
     }
 
-    addToCart(
+    const error = addToCart(
       product,
       selectedSize,
       quantity,
     );
+
+    if (error) {
+      setAddedMessage(error);
+      return;
+    }
 
     setAddedMessage(
       `${quantity} × ${product.name}, size ${selectedSize}, added to cart.`,
@@ -1438,8 +1458,16 @@ function ProductPageDetails({
               ? "Sold out"
               : selectedSize === ""
                 ? "Select a size"
+                : checkoutUnavailable
+                  ? "Checkout unavailable"
                 : "Add to cart"}
           </button>
+
+          {checkoutUnavailable && (
+            <p className="mt-3 text-sm leading-6" role="status">
+              This size is not available for online checkout yet. Please contact the store.
+            </p>
+          )}
 
           {addedMessage && (
             <div className="mt-5">
@@ -1486,19 +1514,64 @@ function ProductPageDetails({
 
 function CartPage({
   cartItems,
+  catalogProducts,
+  catalogReady,
+  onCatalogRefreshed,
+  restorationNotice,
   updateCartQuantity,
   removeFromCart,
   clearCart,
 }) {
-  const subtotal = useMemo(() => {
-    return cartItems.reduce(
-      (total, item) =>
-        total +
-        item.priceValue *
-          item.quantity,
-      0,
-    );
-  }, [cartItems]);
+  const [checkoutStatus, setCheckoutStatus] = useState("");
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const checkoutInProgress = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+  const checkout = useMemo(() => buildShopifyCheckoutUrl({
+    storeUrl: SHOPIFY_STORE_URL,
+    cartItems,
+    products: catalogProducts,
+  }), [cartItems, catalogProducts]);
+  const { subtotal } = checkout;
+  const cannotCheckout = !catalogReady || !checkout.url || isCheckingOut;
+
+  async function proceedToCheckout() {
+    if (cannotCheckout || checkoutInProgress.current) return;
+    checkoutInProgress.current = true;
+    setIsCheckingOut(true);
+    setCheckoutStatus("Checking current prices and availability…");
+    try {
+      const latestProducts = await loadFirebaseProducts();
+      if (!mounted.current) return;
+      if (!Array.isArray(latestProducts)) throw new Error("Catalog unavailable");
+      const latest = buildShopifyCheckoutUrl({
+        storeUrl: SHOPIFY_STORE_URL,
+        cartItems,
+        products: latestProducts,
+      });
+      onCatalogRefreshed(latestProducts);
+      if (!latest.url) {
+        setCheckoutStatus("Your cart has changed. Review the details below before checking out.");
+        return;
+      }
+      if (latest.subtotal !== subtotal || latest.items.some((item, index) =>
+        item.priceValue !== checkout.items[index]?.priceValue ||
+        item.shopifyVariantId !== checkout.items[index]?.shopifyVariantId)) {
+        setCheckoutStatus("Product details or prices changed. Review your updated cart, then choose Checkout again.");
+        return;
+      }
+      setCheckoutStatus("Opening secure checkout…");
+      window.location.assign(latest.url);
+    } catch {
+      if (mounted.current) setCheckoutStatus("We couldn't verify current availability. Please try Checkout again in a moment.");
+    } finally {
+      checkoutInProgress.current = false;
+      if (mounted.current) setIsCheckingOut(false);
+    }
+  }
 
   if (cartItems.length === 0) {
     return (
@@ -1511,6 +1584,8 @@ function CartPage({
           <p className="mt-12 text-xl">
             Your cart is empty.
           </p>
+
+          {restorationNotice && <p className="mt-4 text-sm" role="status">{restorationNotice}</p>}
 
           <NavLink
             to="/shop"
@@ -1534,6 +1609,7 @@ function CartPage({
           <button
             type="button"
             onClick={clearCart}
+            disabled={isCheckingOut}
             className="text-sm underline underline-offset-4 transition-opacity hover:opacity-50"
           >
             Clear cart
@@ -1541,25 +1617,25 @@ function CartPage({
         </div>
 
         <div className="divide-y divide-black/20">
-          {cartItems.map((item) => (
+          {checkout.items.map((item) => (
             <article
               key={item.cartKey}
               className="grid gap-5 py-7 sm:grid-cols-[160px_1fr_auto] sm:items-center sm:gap-6 sm:py-8"
             >
               <NavLink
-                to={`/products/${item.slug}`}
+                to={item.slug ? `/products/${item.slug}` : "/shop"}
                 className="block max-w-[220px] bg-white sm:max-w-none"
               >
-                <img
+                {item.image && <img
                   src={item.image}
                   alt={item.name}
                   className="aspect-square h-full w-full object-contain"
-                />
+                />}
               </NavLink>
 
               <div>
                 <NavLink
-                  to={`/products/${item.slug}`}
+                  to={item.slug ? `/products/${item.slug}` : "/shop"}
                   className="text-xl text-[#0F4C81] no-underline transition-opacity hover:opacity-50"
                 >
                   {item.name}
@@ -1577,6 +1653,7 @@ function CartPage({
 
                 <button
                   type="button"
+                  disabled={isCheckingOut}
                   onClick={() => {
                     removeFromCart(
                       item.cartKey,
@@ -1591,6 +1668,7 @@ function CartPage({
               <div className="flex w-fit items-center border border-black">
                 <button
                   type="button"
+                  disabled={isCheckingOut}
                   onClick={() => {
                     updateCartQuantity(
                       item.cartKey,
@@ -1609,6 +1687,7 @@ function CartPage({
 
                 <button
                   type="button"
+                  disabled={isCheckingOut || item.quantity >= item.maxQuantity}
                   onClick={() => {
                     updateCartQuantity(
                       item.cartKey,
@@ -1616,7 +1695,7 @@ function CartPage({
                     );
                   }}
                   aria-label={`Increase ${item.name} quantity`}
-                  className="flex h-12 w-12 items-center justify-center text-xl transition hover:bg-black hover:text-white"
+                  className="flex h-12 w-12 items-center justify-center text-xl transition hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   +
                 </button>
@@ -1641,10 +1720,19 @@ function CartPage({
 
           <button
             type="button"
-            className="mt-7 w-full border border-black bg-black px-6 py-4 text-lg text-white transition hover:bg-white hover:text-[#0F4C81]"
+            disabled={cannotCheckout}
+            onClick={proceedToCheckout}
+            aria-describedby="checkout-feedback"
+            className="mt-7 w-full border border-black bg-black px-6 py-4 text-lg text-white transition hover:bg-white hover:text-[#0F4C81] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Checkout
+            {isCheckingOut ? "Checking availability…" : "Checkout"}
           </button>
+
+          <div id="checkout-feedback" className="mt-4 space-y-2 text-sm leading-6" aria-live="polite">
+            {!catalogReady && <p>We're unable to confirm the catalog right now. Refresh this page to try again.</p>}
+            {checkoutStatus && <p>{checkoutStatus}</p>}
+            {checkout.errors.map((error) => <p key={error}>{error}</p>)}
+          </div>
 
           <NavLink
             to="/shop"
@@ -1744,8 +1832,10 @@ function AboutPage() {
 }
 
 export default function App() {
+  const [savedCart] = useState(loadSavedCart);
   const [cartItems, setCartItems] =
-    useState(loadSavedCart);
+    useState(savedCart.items);
+  const [catalogReady, setCatalogReady] = useState(false);
   const [isMenuOpen, setIsMenuOpen] =
     useState(false);
   const [
@@ -1758,23 +1848,24 @@ export default function App() {
   );
 
   useEffect(() => {
-    window.localStorage.setItem(
-      CART_STORAGE_KEY,
-      JSON.stringify(cartItems),
-    );
+    try {
+      window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems));
+    } catch {
+      // The cart still works for this visit if browser storage is unavailable.
+    }
   }, [cartItems]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadProducts() {
-      if (!isSupabaseConfigured) {
+      if (!isFirebaseConfigured) {
         return;
       }
 
       try {
         const nextProducts =
-          await loadSupabaseProducts();
+          await loadFirebaseProducts();
 
         if (
           !cancelled &&
@@ -1785,17 +1876,10 @@ export default function App() {
               normalizeCatalogProduct,
             ),
           );
-          const productsById = new Map(nextProducts.map((product) => [product.id, product]));
-          setCartItems((currentItems) =>
-            currentItems
-              .filter((item) => productsById.has(item.productId))
-              .map((item) => ({
-                ...item,
-                priceValue: productsById.get(item.productId).priceValue,
-              })),
-          );
+          setCatalogReady(true);
         }
       } catch {
+        if (!cancelled) setCatalogReady(false);
         // The static catalog remains available
         // during local development or an API outage.
       }
@@ -1819,7 +1903,7 @@ export default function App() {
   const cartItemCount = useMemo(() => {
     return cartItems.reduce(
       (total, item) =>
-        total + item.quantity,
+        total + (Number.isSafeInteger(item.quantity) && item.quantity > 0 ? item.quantity : 0),
       0,
     );
   }, [cartItems]);
@@ -1829,8 +1913,15 @@ export default function App() {
     selectedSize,
     quantity,
   ) {
-    const cartKey =
-      `${product.id}-${selectedSize}`;
+    const size = product.sizes.find((entry) => entry.label === selectedSize);
+    if (!size || !isShopifyVariantId(size.shopifyVariantId)) {
+      return "This size is not available for checkout yet.";
+    }
+    const cartKey = cartItemKey(product.id, selectedSize);
+    const existingQuantity = cartItems.find((item) => item.cartKey === cartKey)?.quantity || 0;
+    if (!Number.isSafeInteger(quantity) || quantity <= 0 || existingQuantity + quantity > size.stock) {
+      return `Only ${size.stock} available in this size. Review the quantity already in your cart.`;
+    }
 
     setCartItems((currentItems) => {
       const existingItem =
@@ -1845,10 +1936,8 @@ export default function App() {
             item.cartKey === cartKey
               ? {
                   ...item,
-                  priceValue: product.priceValue,
                   quantity:
-                    item.quantity +
-                    quantity,
+                    Math.min(size.stock, item.quantity + quantity),
                 }
               : item,
         );
@@ -1858,12 +1947,7 @@ export default function App() {
         ...currentItems,
         {
           cartKey,
-          productId: product.id,
-          slug: product.slug,
-          name: product.name,
-          image: product.image,
-          priceValue:
-            product.priceValue,
+          productId: String(product.id),
           size: selectedSize,
           quantity,
         },
@@ -1875,6 +1959,7 @@ export default function App() {
     cartKey,
     newQuantity,
   ) {
+    if (!Number.isSafeInteger(newQuantity)) return;
     if (newQuantity <= 0) {
       setCartItems((currentItems) =>
         currentItems.filter(
@@ -1885,6 +1970,9 @@ export default function App() {
 
       return;
     }
+
+    const currentItem = resolveCart(cartItems, catalogProducts).items.find((item) => item.cartKey === cartKey);
+    if (!currentItem || (newQuantity > currentItem.maxQuantity && newQuantity >= currentItem.quantity)) return;
 
     setCartItems((currentItems) =>
       currentItems.map((item) =>
@@ -2001,6 +2089,13 @@ export default function App() {
           element={
             <CartPage
               cartItems={cartItems}
+              catalogProducts={catalogProducts}
+              catalogReady={catalogReady}
+              onCatalogRefreshed={(nextProducts) => {
+                setCatalogProducts(nextProducts.map(normalizeCatalogProduct));
+                setCatalogReady(true);
+              }}
+              restorationNotice={savedCart.notice}
               updateCartQuantity={
                 updateCartQuantity
               }
@@ -2015,7 +2110,7 @@ export default function App() {
         <Route
           path="/admin"
           element={
-            isSupabaseConfigured ? (
+            isFirebaseConfigured ? (
               <AdminPage />
             ) : (
               <AdminSetupPage />

@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null && request.auth.token.admin == true;
+    }
+    function validProduct() {
+      let p = request.resource.data;
+      return p.keys().hasOnly(['slug', 'name', 'price_cents', 'sale_price_cents', 'placement', 'description', 'sizes', 'images', 'created_at', 'updated_at'])
+        && p.slug is string && p.slug.size() <= 160 && p.slug.matches('^[a-z0-9]+(-[a-z0-9]+)*$')
+        && p.name is string && p.name.size() > 0 && p.name.size() <= 200
+        && p.price_cents is int && p.price_cents >= 0 && p.price_cents <= 2147483647
+        && (p.sale_price_cents == null || (p.sale_price_cents is int && p.sale_price_cents >= 0 && p.sale_price_cents < p.price_cents))
+        && p.placement in ['new_arrivals', 'collection', 'memories']
+        && p.description is list && p.description.size() <= 50
+        && p.sizes is list && p.sizes.size() <= 50
+        && p.images is list && p.images.size() <= 10
+        && p.created_at is timestamp && p.updated_at == request.time;
+    }
+    match /products/{productId} {
+      allow read: if true;
+      allow create: if isAdmin() && validProduct()
+        && request.resource.data.created_at == request.time
+        && getAfter(/databases/$(database)/documents/productSlugs/$(request.resource.data.slug)).data.productId == productId;
+      allow update: if isAdmin() && validProduct()
+        && request.resource.data.created_at == resource.data.created_at
+        && getAfter(/databases/$(database)/documents/productSlugs/$(request.resource.data.slug)).data.productId == productId;
+      allow delete: if isAdmin();
+    }
+    match /productSlugs/{slug} {
+      allow read: if isAdmin();
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly(['productId'])
+        && request.resource.data.productId is string
+        && getAfter(/databases/$(database)/documents/products/$(request.resource.data.productId)).data.slug == slug
+        && (!exists(/databases/$(database)/documents/productSlugs/$(slug)) || resource.data.productId == request.resource.data.productId);
+      allow delete: if isAdmin()
+        && (!existsAfter(/databases/$(database)/documents/products/$(resource.data.productId))
+          || getAfter(/databases/$(database)/documents/products/$(resource.data.productId)).data.slug != slug);
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
